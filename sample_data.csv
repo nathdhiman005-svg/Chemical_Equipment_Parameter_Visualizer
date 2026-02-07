@@ -1,0 +1,11 @@
+equipment_name,type,flowrate,pressure,temperature
+Reactor A,CSTR,120.0,2.4,350.5
+Reactor A,CSTR,125.5,2.5,355.0
+Reactor B,PFR,95.5,1.8,280.0
+Reactor B,PFR,98.0,1.9,285.0
+Distillation Column,Tray,75.0,1.2,180.3
+Distillation Column,Tray,78.5,1.3,182.0
+Heat Exchanger,Shell-Tube,200.0,3.5,90.0
+Heat Exchanger,Shell-Tube,210.0,3.6,92.5
+Pump P-101,Centrifugal,200.0,4.2,45.0
+Pump P-101,Centrifugal,205.0,4.3,46.5
