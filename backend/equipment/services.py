@@ -128,16 +128,6 @@ def process_csv(file, user):
 
     EquipmentData.objects.bulk_create(objects)
 
-    # ── Keep only the 5 most recent uploads; delete older ones ──
-    MAX_UPLOADS = 5
-    recent_ids = list(
-        UploadHistory.objects.filter(user=user)
-        .order_by("-uploaded_at")
-        .values_list("id", flat=True)[:MAX_UPLOADS]
-    )
-    if recent_ids:
-        UploadHistory.objects.filter(user=user).exclude(id__in=recent_ids).delete()
-
     return {
         "rows_imported": len(objects),
         "equipment_count": df["equipment_name"].nunique(),
