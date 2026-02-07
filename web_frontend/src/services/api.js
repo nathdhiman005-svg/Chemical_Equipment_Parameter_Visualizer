@@ -80,4 +80,16 @@ export const downloadReport = (uploadId) => {
   return api.get("/equipment/report/", { responseType: "blob", params });
 };
 
+// ── Admin endpoints ──
+export const adminGetUsers = (search = "") => {
+  const params = search ? { search } : {};
+  return api.get("/admin/users/", { params });
+};
+export const adminGetUserUploads = (userId) =>
+  api.get(`/admin/users/${userId}/uploads/`);
+export const adminDeleteUpload = (id) =>
+  api.delete(`/admin/uploads/${id}/`);
+export const adminDownloadReport = (uploadId) =>
+  api.get("/equipment/report/", { responseType: "blob", params: { upload_id: uploadId } });
+
 export default api;

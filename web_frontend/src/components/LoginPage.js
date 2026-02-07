@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { login as apiLogin } from "../services/api";
+import { login as apiLogin, getProfile } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 
 const styles = {
@@ -48,8 +48,16 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { data } = await apiLogin(form);
-      // SimpleJWT returns { access, refresh } on login
-      signin({ username: form.username }, { access: data.access, refresh: data.refresh });
+      // Store tokens first so the interceptor can attach them
+      const tokenData = { access: data.access, refresh: data.refresh };
+      signin({ username: form.username }, tokenData);
+      // Fetch full profile (includes is_superuser) now that tokens are in storage
+      try {
+        const profile = await getProfile();
+        signin(profile.data, tokenData);
+      } catch {
+        // Profile fetch failed — keep basic user info
+      }
       navigate("/dashboard");
     } catch (err) {
       setError(err.response?.data?.detail || "Login failed. Check credentials.");

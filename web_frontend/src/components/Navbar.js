@@ -44,6 +44,11 @@ export default function Navbar() {
         {isAuthenticated ? (
           <>
             <Link to="/dashboard" style={styles.link}>Dashboard</Link>
+            {user?.is_superuser && (
+              <Link to="/admin-dashboard" style={{ ...styles.link, color: "#ffcdd2" }}>
+                Admin Panel
+              </Link>
+            )}
             <span style={{ fontSize: 13 }}>Hi, {user?.username}</span>
             <button onClick={handleLogout} style={styles.btn}>Logout</button>
           </>

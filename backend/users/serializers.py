@@ -29,5 +29,14 @@ class RegisterSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "username", "email", "company", "role", "date_joined")
+        fields = ("id", "username", "email", "company", "role", "date_joined", "is_superuser")
+        read_only_fields = fields
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    """Serializer used by admin endpoints to list all users."""
+
+    class Meta:
+        model = User
+        fields = ("id", "username", "email", "date_joined", "company", "role", "is_superuser", "is_active")
         read_only_fields = fields
