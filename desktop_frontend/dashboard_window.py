@@ -1,6 +1,7 @@
 """
 dashboard_window.py — Main dashboard with Matplotlib charts embedded in PyQt5.
 Select-to-View workflow: Upload → File List → Analysis (hidden until a file is selected).
+Charts are generated dynamically based on whatever numeric columns the CSV contained.
 """
 
 import os
@@ -10,7 +11,7 @@ from PyQt5.QtWidgets import (
     QLabel, QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem,
     QSplitter, QGroupBox, QScrollArea, QFrame, QHeaderView,
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QFont, QColor
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -18,10 +19,17 @@ from matplotlib.figure import Figure
 
 
 COLORS = ["#1a237e", "#0d47a1", "#1565c0", "#1e88e5", "#42a5f5", "#64b5f6", "#90caf9", "#bbdefb"]
+ATTR_PALETTE = [
+    "#1a237e", "#0d47a1", "#1565c0", "#2e7d32", "#e65100",
+    "#6a1b9a", "#c62828", "#00695c", "#4e342e", "#37474f",
+]
 
 
 class DashboardWindow(QMainWindow):
     """Dashboard: Upload → File List (Show / Download PDF / Delete) → Analysis."""
+
+    logout_requested = pyqtSignal()
+    admin_panel_requested = pyqtSignal()
 
     def __init__(self, session):
         super().__init__()
@@ -29,7 +37,10 @@ class DashboardWindow(QMainWindow):
         self.selected_file_id = None
         self.file_stats = None
         self.history_data = []
-        self.setWindowTitle("Chemical Equipment Visualizer")
+        self._attr_canvases = []  # dynamic attribute chart canvases
+
+        username = session.user.get("username", "User") if session.user else "User"
+        self.setWindowTitle(f"Chemical Equipment Visualizer — {username}")
         self.setMinimumSize(1100, 850)
         self._build_ui()
         self._refresh_history()
@@ -40,6 +51,31 @@ class DashboardWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
+
+        # ═══ 0. HEADER BAR (user info + logout) ═══
+        header_row = QHBoxLayout()
+        username = self.session.user.get("username", "User") if self.session.user else "User"
+        greeting = QLabel(f"Welcome, {username}")
+        greeting.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        greeting.setStyleSheet("color:#1a237e;")
+        header_row.addWidget(greeting)
+        header_row.addStretch()
+
+        if self.session.is_superuser:
+            btn_admin = QPushButton("Admin Panel")
+            btn_admin.setStyleSheet(
+                "background:#ff6f00;color:#fff;padding:6px 16px;border-radius:4px;font-size:13px;"
+            )
+            btn_admin.clicked.connect(self._go_admin)
+            header_row.addWidget(btn_admin)
+
+        btn_logout = QPushButton("Logout")
+        btn_logout.setStyleSheet(
+            "background:#e53935;color:#fff;padding:6px 16px;border-radius:4px;font-size:13px;"
+        )
+        btn_logout.clicked.connect(self._do_logout)
+        header_row.addWidget(btn_logout)
+        root.addLayout(header_row)
 
         # ═══ 1. UPLOAD SECTION (top) ═══
         upload_group = QGroupBox("Upload CSV")
@@ -86,6 +122,13 @@ class DashboardWindow(QMainWindow):
         self.analysis_label.setStyleSheet("color:#1a237e; padding: 4px 0;")
         analysis_layout.addWidget(self.analysis_label)
 
+        # Detected parameters label
+        self.params_label = QLabel("")
+        self.params_label.setFont(QFont("Segoe UI", 9))
+        self.params_label.setStyleSheet("color:#555; padding: 2px 0;")
+        self.params_label.setWordWrap(True)
+        analysis_layout.addWidget(self.params_label)
+
         # Type distribution text
         self.type_dist_label = QLabel("")
         self.type_dist_label.setFont(QFont("Segoe UI", 10))
@@ -97,24 +140,23 @@ class DashboardWindow(QMainWindow):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
-        chart_container = QWidget()
-        chart_layout = QVBoxLayout(chart_container)
+        self.chart_container = QWidget()
+        self.chart_layout = QVBoxLayout(self.chart_container)
 
-        # Chart 1: Equipment Averages (full width)
-        equip_group = QGroupBox("Equipment Averages (Flowrate / Pressure / Temperature)")
-        equip_lay = QVBoxLayout(equip_group)
-        self.bar_figure = Figure(figsize=(9, 3.5), dpi=100)
-        self.bar_canvas = FigureCanvas(self.bar_figure)
-        equip_lay.addWidget(self.bar_canvas)
-        chart_layout.addWidget(equip_group)
+        # Placeholder for dynamic attribute charts (will be populated at runtime)
+        self.attr_charts_widget = QWidget()
+        self.attr_charts_layout = QVBoxLayout(self.attr_charts_widget)
+        self.attr_charts_layout.setContentsMargins(0, 0, 0, 0)
+        self.chart_layout.addWidget(self.attr_charts_widget)
 
-        # Charts 2 & 3: Type Distribution side by side
+        # Charts: Type Distribution side by side (UNCHANGED)
         type_splitter = QSplitter(Qt.Horizontal)
 
         pie_group = QGroupBox("Type Distribution (Pie)")
         pie_lay = QVBoxLayout(pie_group)
         self.pie_figure = Figure(figsize=(4, 3.5), dpi=100)
         self.pie_canvas = FigureCanvas(self.pie_figure)
+        self.pie_canvas.setMinimumHeight(280)
         pie_lay.addWidget(self.pie_canvas)
         type_splitter.addWidget(pie_group)
 
@@ -122,11 +164,13 @@ class DashboardWindow(QMainWindow):
         type_bar_lay = QVBoxLayout(type_bar_group)
         self.type_bar_figure = Figure(figsize=(4, 3.5), dpi=100)
         self.type_bar_canvas = FigureCanvas(self.type_bar_figure)
+        self.type_bar_canvas.setMinimumHeight(280)
         type_bar_lay.addWidget(self.type_bar_canvas)
         type_splitter.addWidget(type_bar_group)
 
-        chart_layout.addWidget(type_splitter)
-        scroll.setWidget(chart_container)
+        type_splitter.setMinimumHeight(320)
+        self.chart_layout.addWidget(type_splitter)
+        scroll.setWidget(self.chart_container)
         analysis_layout.addWidget(scroll, stretch=1)
 
         # Hide the entire analysis section by default
@@ -164,6 +208,14 @@ class DashboardWindow(QMainWindow):
         total = self.file_stats.get("total_records", 0)
         self.analysis_label.setText(f"Analysis: {name} — {total} records")
 
+        # Detected parameters
+        numeric_columns = self.file_stats.get("numeric_columns", [])
+        if numeric_columns:
+            nice = ", ".join(c.replace("_", " ").title() for c in numeric_columns)
+            self.params_label.setText(f"Detected Parameters: {nice}")
+        else:
+            self.params_label.setText("")
+
         # Type distribution text
         type_dist = self.file_stats.get("type_distribution", [])
         if type_dist:
@@ -172,36 +224,64 @@ class DashboardWindow(QMainWindow):
         else:
             self.type_dist_label.setText("")
 
-        self._draw_equip_bar(self.file_stats.get("equipment_list", []))
+        # Draw dynamic attribute charts
+        equipment_list = self.file_stats.get("equipment_list", [])
+        self._draw_dynamic_attr_charts(equipment_list, numeric_columns)
+
+        # Draw type distribution charts (UNCHANGED)
         self._draw_type_pie(type_dist)
         self._draw_type_bar(type_dist)
         self.analysis_widget.setVisible(True)
 
-    # ── Chart 1: Equipment Averages grouped bar ───────
+    # ── Dynamic per-attribute bar charts ──────────────
 
-    def _draw_equip_bar(self, equipment_list):
-        self.bar_figure.clear()
-        ax = self.bar_figure.add_subplot(111)
-        if not equipment_list:
-            ax.text(0.5, 0.5, "No data", ha="center", va="center", fontsize=14, color="#888")
-        else:
-            names = [e["name"] for e in equipment_list]
-            x = np.arange(len(names))
-            width = 0.25
-            ax.bar(x - width, [e.get("avg_flowrate", 0) for e in equipment_list], width, label="Flowrate", color="#1a237e")
-            ax.bar(x, [e.get("avg_pressure", 0) for e in equipment_list], width, label="Pressure", color="#1565c0")
-            ax.bar(x + width, [e.get("avg_temperature", 0) for e in equipment_list], width, label="Temperature", color="#42a5f5")
+    def _draw_dynamic_attr_charts(self, equipment_list, numeric_columns):
+        """Clear old attribute charts and create one bar chart per numeric column."""
+        # Remove old canvases
+        for canvas in self._attr_canvases:
+            canvas.setParent(None)
+            canvas.deleteLater()
+        self._attr_canvases = []
+
+        # Remove old group boxes
+        while self.attr_charts_layout.count():
+            item = self.attr_charts_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+                widget.deleteLater()
+
+        if not equipment_list or not numeric_columns:
+            return
+
+        names = [e["name"] for e in equipment_list]
+        x = np.arange(len(names))
+
+        for idx, col in enumerate(numeric_columns):
+            nice_name = col.replace("_", " ").title()
+            group = QGroupBox(f"Avg {nice_name} by Equipment")
+            group.setMinimumHeight(320)
+            lay = QVBoxLayout(group)
+
+            fig = Figure(figsize=(9, 3.5), dpi=100)
+            ax = fig.add_subplot(111)
+            color = ATTR_PALETTE[idx % len(ATTR_PALETTE)]
+            values = [e.get("avg", {}).get(col, 0) for e in equipment_list]
+            ax.bar(x, values, color=color, edgecolor="white", width=0.6)
             ax.set_xticks(x)
-            ax.set_xticklabels(names, fontsize=8)
+            ax.set_xticklabels(names, fontsize=8, rotation=30 if len(names) > 4 else 0,
+                               ha="right" if len(names) > 4 else "center")
             ax.set_ylabel("Average Value")
-            ax.set_title("Equipment Averages", fontsize=11, fontweight="bold")
-            ax.legend(fontsize=8)
-            if len(names) > 4:
-                ax.tick_params(axis="x", rotation=30)
-        self.bar_figure.tight_layout()
-        self.bar_canvas.draw()
+            ax.set_title(f"Avg {nice_name}", fontsize=11, fontweight="bold")
+            fig.tight_layout()
 
-    # ── Chart 2: Type Distribution pie ────────────────
+            canvas = FigureCanvas(fig)
+            canvas.setMinimumHeight(280)
+            lay.addWidget(canvas)
+            self.attr_charts_layout.addWidget(group)
+            self._attr_canvases.append(canvas)
+
+    # ── Chart: Type Distribution pie (UNCHANGED) ──────
 
     def _draw_type_pie(self, type_dist):
         self.pie_figure.clear()
@@ -217,7 +297,7 @@ class DashboardWindow(QMainWindow):
         self.pie_figure.tight_layout()
         self.pie_canvas.draw()
 
-    # ── Chart 3: Type Distribution bar ────────────────
+    # ── Chart: Type Distribution bar (UNCHANGED) ──────
 
     def _draw_type_bar(self, type_dist):
         self.type_bar_figure.clear()
@@ -334,3 +414,12 @@ class DashboardWindow(QMainWindow):
             QMessageBox.information(self, "Report Saved", f"Report saved to:\n{path}")
         except Exception as exc:
             QMessageBox.warning(self, "Report Failed", str(exc))
+
+    # ── Navigation ────────────────────────────────────
+
+    def _do_logout(self):
+        self.session.logout()
+        self.logout_requested.emit()
+
+    def _go_admin(self):
+        self.admin_panel_requested.emit()

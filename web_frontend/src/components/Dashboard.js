@@ -15,6 +15,11 @@ import { uploadCSV, getStats, getHistory, deleteUpload, downloadReport } from ".
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend, Title);
 
 const COLORS = ["#1a237e", "#0d47a1", "#1565c0", "#1e88e5", "#42a5f5", "#64b5f6", "#90caf9", "#bbdefb"];
+/* Extended palette so each attribute chart gets a distinct dominant color */
+const ATTR_PALETTE = [
+  "#1a237e", "#0d47a1", "#1565c0", "#2e7d32", "#e65100",
+  "#6a1b9a", "#c62828", "#00695c", "#4e342e", "#37474f",
+];
 
 const s = {
   page: { maxWidth: 960, margin: "24px auto", padding: "0 16px" },
@@ -26,6 +31,7 @@ const s = {
     boxShadow: "0 1px 6px rgba(0,0,0,0.07)",
   },
   grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 },
+  attrGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 20 },
   heading: { color: "#1a237e", marginBottom: 12 },
   input: { marginRight: 12 },
   btn: {
@@ -51,6 +57,22 @@ const s = {
   th: { textAlign: "left", borderBottom: "2px solid #1a237e", padding: "6px 8px", color: "#1a237e" },
   td: { borderBottom: "1px solid #eee", padding: "6px 8px" },
 };
+
+/** Build one Bar‑chart dataset for a single numeric attribute. */
+function buildAttrBarData(equipmentList, attrName, colorIdx) {
+  const color = ATTR_PALETTE[colorIdx % ATTR_PALETTE.length];
+  return {
+    labels: equipmentList.map((e) => e.name),
+    datasets: [
+      {
+        label: `Avg ${attrName.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}`,
+        data: equipmentList.map((e) => (e.avg ? e.avg[attrName] ?? 0 : 0)),
+        backgroundColor: color,
+        borderRadius: 4,
+      },
+    ],
+  };
+}
 
 export default function Dashboard() {
   const [file, setFile] = useState(null);
@@ -101,10 +123,8 @@ export default function Dashboard() {
         text: `Imported ${data.rows_imported} rows from ${data.equipment_count} equipment(s).`,
       });
       setFile(null);
-      // Reset the file input so the same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = "";
       await refreshHistory();
-      // Auto-select the newly uploaded file
       setSelectedFileId(data.upload_id);
       loadFileStats(data.upload_id);
     } catch (err) {
@@ -150,18 +170,11 @@ export default function Dashboard() {
     }
   };
 
-  /* ── Chart data builders (only from fileStats) ── */
-  const barData = fileStats?.equipment_list?.length
-    ? {
-        labels: fileStats.equipment_list.map((e) => e.name),
-        datasets: [
-          { label: "Avg Flowrate", data: fileStats.equipment_list.map((e) => e.avg_flowrate), backgroundColor: "#1a237e", borderRadius: 4 },
-          { label: "Avg Pressure", data: fileStats.equipment_list.map((e) => e.avg_pressure), backgroundColor: "#1565c0", borderRadius: 4 },
-          { label: "Avg Temperature", data: fileStats.equipment_list.map((e) => e.avg_temperature), backgroundColor: "#42a5f5", borderRadius: 4 },
-        ],
-      }
-    : null;
+  /* ── Dynamic attribute charts ── */
+  const numericColumns = fileStats?.numeric_columns || [];
+  const equipmentList = fileStats?.equipment_list || [];
 
+  /* ── Type distribution (UNCHANGED) ── */
   const typeDist = fileStats?.type_distribution || [];
   const typePieData = typeDist.length
     ? { labels: typeDist.map((t) => t.type || "Unknown"), datasets: [{ data: typeDist.map((t) => t.count), backgroundColor: typeDist.map((_, i) => COLORS[i % COLORS.length]) }] }
@@ -251,6 +264,11 @@ export default function Dashboard() {
             <h3 style={s.heading}>
               Analysis: {selectedFile?.file_name || "Selected File"} — {fileStats.total_records} records
             </h3>
+            {numericColumns.length > 0 && (
+              <div style={{ marginTop: 4, fontSize: 13, color: "#555" }}>
+                <strong>Detected Parameters:</strong> {numericColumns.map((c) => c.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase())).join(", ")}
+              </div>
+            )}
             {typeDist.length > 0 && (
               <div style={{ marginTop: 8 }}>
                 <strong style={{ color: "#1a237e", fontSize: 14 }}>Type Distribution: </strong>
@@ -259,15 +277,28 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Equipment Averages Chart */}
-          {barData && (
-            <div style={s.card}>
-              <h4 style={s.heading}>Equipment Averages (Flowrate / Pressure / Temperature)</h4>
-              <Bar data={barData} options={{ responsive: true, plugins: { legend: { position: "top" }, title: { display: false } }, scales: { y: { beginAtZero: true } } }} />
+          {/* ── Dynamic Per-Attribute Bar Charts ── */}
+          {equipmentList.length > 0 && numericColumns.length > 0 && (
+            <div style={s.attrGrid}>
+              {numericColumns.map((col, idx) => (
+                <div key={col} style={s.card}>
+                  <h4 style={s.heading}>
+                    Avg {col.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())} by Equipment
+                  </h4>
+                  <Bar
+                    data={buildAttrBarData(equipmentList, col, idx)}
+                    options={{
+                      responsive: true,
+                      plugins: { legend: { display: false }, title: { display: false } },
+                      scales: { y: { beginAtZero: true } },
+                    }}
+                  />
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Type Distribution Charts */}
+          {/* ── Type Distribution Charts (UNCHANGED) ── */}
           {typePieData && typeBarData && (
             <div style={s.grid}>
               <div style={s.card}>

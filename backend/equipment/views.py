@@ -49,20 +49,25 @@ def _fig_to_image(fig, width=5 * inch, height=3 * inch):
     return Image(buf, width=width, height=height)
 
 
-def _make_equip_avg_chart(equipment_list):
-    """Bar chart: per-equipment averages for flowrate / pressure / temperature."""
+ATTR_PALETTE = ["#1a237e", "#0d47a1", "#1565c0", "#2e7d32", "#e65100",
+                "#6a1b9a", "#c62828", "#00695c", "#4e342e", "#37474f"]
+
+
+def _make_single_attr_chart(equipment_list, attr_name, color_idx):
+    """Bar chart: per-equipment average for a single numeric attribute."""
     names = [e["name"] for e in equipment_list]
-    x = np.arange(len(names))
-    width = 0.25
+    values = [e["avg"].get(attr_name, 0) for e in equipment_list]
+    color = ATTR_PALETTE[color_idx % len(ATTR_PALETTE)]
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.bar(x - width, [e["avg_flowrate"] for e in equipment_list], width, label="Flowrate", color="#1a237e")
-    ax.bar(x,         [e["avg_pressure"] for e in equipment_list], width, label="Pressure", color="#1565c0")
-    ax.bar(x + width, [e["avg_temperature"] for e in equipment_list], width, label="Temperature", color="#42a5f5")
+    x = np.arange(len(names))
+    ax.bar(x, values, color=color, edgecolor="white", width=0.6)
     ax.set_xticks(x)
-    ax.set_xticklabels(names, fontsize=8)
+    ax.set_xticklabels(names, fontsize=8,
+                       rotation=30 if len(names) > 6 else 0,
+                       ha="right" if len(names) > 6 else "center")
     ax.set_ylabel("Average Value")
-    ax.set_title("Equipment Averages (Flowrate / Pressure / Temperature)", fontsize=10, fontweight="bold")
-    ax.legend(fontsize=8)
+    nice = attr_name.replace("_", " ").title()
+    ax.set_title(f"Avg {nice} by Equipment", fontsize=10, fontweight="bold")
     fig.tight_layout()
     return fig
 
@@ -182,6 +187,7 @@ class ReportView(APIView):
             except (ValueError, TypeError):
                 upload_id = None
         stats = get_summary_stats(user, upload_id=upload_id)
+        numeric_columns = stats.get("numeric_columns", [])
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4)
@@ -198,6 +204,10 @@ class ReportView(APIView):
         elements.append(
             Paragraph(f"Total Records: {stats['total_records']}", styles["Normal"])
         )
+        if numeric_columns:
+            elements.append(
+                Paragraph(f"Detected Parameters: {', '.join(c.replace('_', ' ').title() for c in numeric_columns)}", styles["Normal"])
+            )
         elements.append(Spacer(1, 0.3 * inch))
 
         type_dist = stats.get("type_distribution", [])
@@ -223,12 +233,15 @@ class ReportView(APIView):
             elements.append(table)
             elements.append(Spacer(1, 0.3 * inch))
 
-        # ── Chart 1: Equipment Averages Bar ──
-        if stats["equipment_list"]:
-            elements.append(Paragraph("Equipment Averages Chart", styles["Heading2"]))
-            fig = _make_equip_avg_chart(stats["equipment_list"])
-            elements.append(_fig_to_image(fig, width=5.5 * inch, height=3 * inch))
-            elements.append(Spacer(1, 0.3 * inch))
+        # ── Per-Attribute Bar Charts (one chart per numeric column) ──
+        equip_list = stats.get("equipment_list", [])
+        if equip_list and numeric_columns:
+            for idx, col in enumerate(numeric_columns):
+                nice = col.replace('_', ' ').title()
+                elements.append(Paragraph(f"Avg {nice} by Equipment", styles["Heading2"]))
+                fig = _make_single_attr_chart(equip_list, col, idx)
+                elements.append(_fig_to_image(fig, width=5.5 * inch, height=3 * inch))
+                elements.append(Spacer(1, 0.3 * inch))
 
         # ── Chart 2: Type Distribution Pie ──
         if type_dist:

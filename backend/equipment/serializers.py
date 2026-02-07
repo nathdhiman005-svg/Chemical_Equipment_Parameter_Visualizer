@@ -5,14 +5,18 @@ from .models import EquipmentData, UploadHistory
 class EquipmentDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = EquipmentData
-        fields = ("id", "equipment_name", "equipment_type", "flowrate", "pressure", "temperature", "timestamp")
+        fields = (
+            "id", "equipment_name", "equipment_type",
+            "flowrate", "pressure", "temperature",
+            "numeric_attributes", "timestamp",
+        )
         read_only_fields = ("id", "timestamp")
 
 
 class UploadHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = UploadHistory
-        fields = ("id", "file_name", "rows_imported", "uploaded_at")
+        fields = ("id", "file_name", "rows_imported", "numeric_columns", "uploaded_at")
         read_only_fields = fields
 
 

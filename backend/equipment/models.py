@@ -3,7 +3,7 @@ from django.db import models
 
 
 class EquipmentData(models.Model):
-    """Stores equipment readings with specific parameter columns."""
+    """Stores equipment readings with dynamic numeric parameter columns."""
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="equipment_data"
@@ -13,9 +13,12 @@ class EquipmentData(models.Model):
     )
     equipment_name = models.CharField(max_length=200)
     equipment_type = models.CharField(max_length=200, blank=True, default="")
+    # Legacy fixed columns (kept for backward-compat with existing data)
     flowrate = models.FloatField(default=0.0)
     pressure = models.FloatField(default=0.0)
     temperature = models.FloatField(default=0.0)
+    # Dynamic numeric attributes stored as JSON  {"vibration": 1.2, "rpm": 3000, ...}
+    numeric_attributes = models.JSONField(default=dict, blank=True)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -23,7 +26,7 @@ class EquipmentData(models.Model):
         verbose_name_plural = "Equipment Data"
 
     def __str__(self):
-        return f"{self.equipment_name} ({self.equipment_type}) — F:{self.flowrate} P:{self.pressure} T:{self.temperature}"
+        return f"{self.equipment_name} ({self.equipment_type})"
 
 
 class UploadHistory(models.Model):
@@ -34,6 +37,8 @@ class UploadHistory(models.Model):
     )
     file_name = models.CharField(max_length=300)
     rows_imported = models.PositiveIntegerField(default=0)
+    # Stores the list of detected numeric column names for this upload
+    numeric_columns = models.JSONField(default=list, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
