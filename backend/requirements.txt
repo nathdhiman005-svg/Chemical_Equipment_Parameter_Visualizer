@@ -9,3 +9,4 @@ dj-database-url>=2.1
 psycopg2-binary>=2.9
 gunicorn>=21.2
 whitenoise>=6.5
+matplotlib>=3.8
