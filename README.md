@@ -2,6 +2,13 @@
 
 A full-stack application for uploading, visualizing, and reporting chemical equipment parameters — with strict per-user data isolation.
 
+## Live Deployment
+
+| Service | URL |
+|---|---|
+| **Frontend (Vercel)** | https://chemical-equipment-parameter-visual-sage.vercel.app |
+| **Backend API (Render)** | https://chemical-equipment-parameter-visualizer-xq36.onrender.com/api/ |
+
 ## Architecture
 
 | Layer | Technology |
@@ -9,43 +16,108 @@ A full-stack application for uploading, visualizing, and reporting chemical equi
 | **Backend API** | Django 4.2 + Django REST Framework + SimpleJWT |
 | **Web Frontend** | React 18 + Chart.js |
 | **Desktop Frontend** | PyQt5 + Matplotlib |
-| **Database** | SQLite (per-user data isolation via FK + queryset filtering) |
+| **Database (Local)** | SQLite |
+| **Database (Production)** | PostgreSQL (Render) |
 | **PDF Reports** | ReportLab |
 
-## Quick Start
+---
 
-### 1. Backend
+## Local Development Setup
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+ and npm
+- Git
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/nathdhiman005-svg/Chemical_Equipment_Parameter_Visualizer.git
+cd Chemical_Equipment_Parameter_Visualizer
+```
+
+### 2. Backend Setup
 
 ```bash
 cd backend
+
+# Create and activate virtual environment
 python -m venv venv
 venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS / Linux
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Run database migrations
 python manage.py makemigrations users equipment
 python manage.py migrate
+
+# Create an admin superuser
 python manage.py createsuperuser
+
+# Start the development server
 python manage.py runserver
 ```
 
-API available at `http://127.0.0.1:8000/api/`
+The API will be available at `http://127.0.0.1:8000/api/`  
+Django admin panel at `http://127.0.0.1:8000/admin/`
 
-### 2. Web Frontend
+### 3. Web Frontend Setup
 
 ```bash
 cd web_frontend
+
+# Install dependencies
 npm install
+
+# Start the development server
 npm start
 ```
 
 Opens at `http://localhost:3000`
 
-### 3. Desktop Frontend
+> The `.env.development` file is pre-configured to point at `http://127.0.0.1:8000/api`.  
+> No additional configuration is needed for local development.
+
+### 4. Desktop Frontend Setup
 
 ```bash
 cd desktop_frontend
+
+# Install dependencies (use the backend venv or create a separate one)
 pip install -r requirements.txt
+
+# Run the application
 python main.py
 ```
+
+> The desktop app connects to `http://127.0.0.1:8000/api` by default.  
+> Make sure the backend server is running before launching.
+
+---
+
+## Environment Variables
+
+### Backend (`backend/core/settings.py`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `DJANGO_SECRET_KEY` | *(insecure dev key)* | Django secret key — set a strong random value in production |
+| `DJANGO_DEBUG` | `True` | Set to `False` in production |
+| `DJANGO_ALLOWED_HOSTS` | `*` | Comma-separated list of allowed hosts |
+| `DATABASE_URL` | `sqlite:///db.sqlite3` | PostgreSQL connection string for production |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated allowed frontend origins |
+| `CSRF_TRUSTED_ORIGINS` | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated trusted origins for CSRF |
+
+### Frontend (`web_frontend/.env.development`)
+
+| Variable | Default | Description |
+|---|---|---|
+| `REACT_APP_API_URL` | `http://127.0.0.1:8000/api` | Backend API base URL |
+
+---
 
 ## API Endpoints
 
