@@ -186,6 +186,16 @@ class ReportView(APIView):
                 upload_id = int(upload_id)
             except (ValueError, TypeError):
                 upload_id = None
+
+        # If the requester is an admin and an upload_id is given,
+        # generate the report for the upload's actual owner.
+        if upload_id is not None and user.is_staff:
+            try:
+                upload_obj = UploadHistory.objects.get(pk=upload_id)
+                user = upload_obj.user
+            except UploadHistory.DoesNotExist:
+                pass
+
         stats = get_summary_stats(user, upload_id=upload_id)
         numeric_columns = stats.get("numeric_columns", [])
 
